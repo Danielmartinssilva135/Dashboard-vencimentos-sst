@@ -1,6 +1,9 @@
 import io
+import smtplib
 import urllib.parse
 from datetime import date, datetime
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -11,7 +14,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilização CSS Clean Power BI + Tema Claro
+# Estilização CSS Clean Power BI + Responsividade Mobile
 st.markdown("""
 <style>
     .stApp {
@@ -64,10 +67,16 @@ st.markdown("""
     .val-yellow { color: #D97706 !important; }
     .val-green { color: #16A34A !important; }
     .val-blue { color: #0284C7 !important; }
+    
+    @media (max-width: 768px) {
+        .header-title { font-size: 16px; }
+        .kpi-value { font-size: 18px; }
+        .kpi-title { font-size: 10px; }
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# 1. Gerador de Planilha Modelo com Abas Específicas
+# 1. Gerador de Planilha Modelo com E-mail e Telefone
 @st.cache_data
 def gerar_planilha_modelo_vencimentos():
     hoje = datetime.now()
@@ -112,6 +121,20 @@ def gerar_planilha_modelo_vencimentos():
             "Instrutor Interno", "Consultoria Externa",
             "Eng. Mecânico PH", "Eng. Mecânico PH",
             "Técnico SST", "Técnico SST"
+        ],
+        "Email_Responsavel": [
+            "medico@empresa.com", "medico@empresa.com",
+            "compras@empresa.com", "compras@empresa.com",
+            "rh@empresa.com", "treinamentos@empresa.com",
+            "engenharia@empresa.com", "engenharia@empresa.com",
+            "tecnico.sst@empresa.com", "tecnico.sst@empresa.com"
+        ],
+        "Telefone_Responsavel": [
+            "5581999990001", "5581999990001",
+            "5581999990002", "5581999990002",
+            "5581999990003", "5581999990004",
+            "5581999990005", "5581999990005",
+            "5581999990006", "5581999990006"
         ]
     })
 
@@ -121,10 +144,10 @@ def gerar_planilha_modelo_vencimentos():
     buffer.seek(0)
     return buffer
 
-# 2. Barra Lateral: Configurações, Download e Upload
+# 2. Barra Lateral: Configurações, Parâmetros e Upload
 with st.sidebar:
     st.header("⚙️ Configuração de Alertas")
-    dias_aviso = st.slider("Avisar itens a vencer em até:", min_value=7, max_value=90, value=30, step=1, help="Dias de antecedência para status de atenção")
+    dias_aviso = st.slider("Avisar itens a vencer em até:", min_value=7, max_value=90, value=30, step=1)
     
     st.divider()
     st.subheader("📥 Planilha Modelo")
@@ -138,6 +161,12 @@ with st.sidebar:
     st.divider()
     st.subheader("📁 Upload de Dados")
     upload_arquivo = st.file_uploader("Suba sua planilha (.xlsx)", type=["xlsx"])
+    
+    st.divider()
+    with st.expander("📧 Configurar Envio de E-mail (Opcional)"):
+        st.caption("Insira seu e-mail do Gmail e Senha de Aplicativo caso deseje enviar notificações por e-mail diretamente:")
+        user_email = st.text_input("Seu E-mail (Gmail)", placeholder="exemplo@gmail.com")
+        user_pass = st.text_input("Senha de Aplicativo Google (16 letras)", type="password")
 
 # 3. Leitura e Processamento dos Dados
 if upload_arquivo:
@@ -149,9 +178,13 @@ else:
     buffer = gerar_planilha_modelo_vencimentos()
     df = pd.read_excel(buffer, sheet_name="Vencimentos")
 
+if "Email_Responsavel" not in df.columns:
+    df["Email_Responsavel"] = ""
+if "Telefone_Responsavel" not in df.columns:
+    df["Telefone_Responsavel"] = ""
+
 df["Data_Validade"] = pd.to_datetime(df["Data_Validade"], errors="coerce")
 hoje_ts = pd.to_datetime(date.today())
-
 df["Dias_Restantes"] = (df["Data_Validade"] - hoje_ts).dt.days
 
 def classificar_status(dias):
@@ -169,7 +202,7 @@ df["Status"] = df["Dias_Restantes"].apply(classificar_status)
 # Filtros na Barra Lateral
 with st.sidebar:
     st.divider()
-    st.subheader("🔍 Filtros")
+    st.subheader("🔍 Filtros de Visualização")
     categorias_lista = ["Todas"] + sorted(df["Categoria"].dropna().unique().tolist())
     categoria_sel = st.selectbox("Categoria:", categorias_lista)
     
@@ -182,7 +215,7 @@ if categoria_sel != "Todas":
 if status_sel != "Todos":
     df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
 
-# 4. Cabeçalho Principal
+# 4. Banner de Cabeçalho
 st.markdown("""
 <div class="header-card">
     <div class="header-title">🛡️ CONTROLE DE VENCIMENTOS & CONFORMIDADE LEGAL SST</div>
@@ -211,7 +244,7 @@ with k5:
 
 st.write("")
 
-# 6. Gráficos Analíticos com Margens e Legendas Corrigidas
+# 6. Gráficos Analíticos
 c_graf1, c_graf2 = st.columns(2)
 config_limpo = {"displayModeBar": False}
 
@@ -225,7 +258,7 @@ with c_graf1:
     )
     fig_cat.update_layout(
         plot_bgcolor="#FFFFFF", paper_bgcolor="#FFFFFF",
-        margin=dict(l=15, r=15, t=40, b=70),
+        margin=dict(l=15, r=15, t=40, b=80),
         xaxis=dict(tickfont=dict(color="#0F172A", size=10), showgrid=False, title=None),
         yaxis=dict(tickfont=dict(color="#0F172A", size=10), gridcolor="#E2E8F0", title="Quantidade"),
         legend=dict(orientation="h", yanchor="bottom", y=-0.50, xanchor="center", x=0.5, title=None)
@@ -251,37 +284,104 @@ with c_graf2:
 
 st.write("")
 
-# 7. Tabela de Gestão e Ações de Alerta
-st.markdown("### 📋 Itens em Monitoramento")
+# 7. Disparo de Alertas
+st.markdown("### 🔔 Central de Notificações")
 
-itens_alerta = df[df["Status"].isin(["🔴 Vencido", "🟡 A Vencer"])]
-texto_alerta_zap = f"🚨 *ALERTA SST - CONTROLE DE VENCIMENTOS* 🚨%0A%0A"
-texto_alerta_zap += f"Data do Relatório: {date.today().strftime('%d/%m/%Y')}%0A"
-texto_alerta_zap += f"Total Vencidos: {total_vencidos}%0A"
-texto_alerta_zap += f"Total A Vencer (≤ {dias_aviso} dias): {total_a_vencer}%0A%0A"
-texto_alerta_zap += "*Atenção para as principais pendências:*%0A"
+def disparar_emails_pendencias(df_criticos, remetente, senha):
+    enviados = 0
+    df_validos = df_criticos[df_criticos["Email_Responsavel"].astype(str).str.contains("@", na=False)]
+    
+    for email_dest, grupo in df_validos.groupby("Email_Responsavel"):
+        msg = MIMEMultipart()
+        msg["From"] = f"Gestão SST <{remetente}>"
+        msg["To"] = email_dest
+        msg["Subject"] = f"⚠️ ALERTA SST: Itens Vencidos / A Vencer ({len(grupo)} ocorrências)"
+        
+        tabela_html = grupo[["Status", "Categoria", "Item_Colaborador_Equipamento", "Data_Validade"]].to_html(index=False)
+        corpo = f"""
+        <html>
+            <body style="font-family: Arial, sans-serif; color: #1E293B;">
+                <h3 style="color: #0F766E;">Relatório de Pendências e Conformidade Legal - SST</h3>
+                <p>Olá,</p>
+                <p>Identificamos <b>{len(grupo)} item(ns)</b> sob sua responsabilidade que demandam atenção imediata:</p>
+                {tabela_html}
+                <br>
+                <p><i>Por favor, providencie a regularização o quanto antes.</i></p>
+            </body>
+        </html>
+        """
+        msg.attach(MIMEText(corpo, "html"))
+        
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.starttls()
+            server.login(remetente, senha)
+            server.send_message(msg)
+            enviados += 1
+            
+    return enviados
 
-for _, row in itens_alerta.head(8).iterrows():
-    texto_alerta_zap += f"- [{row['Status']}] {row['Categoria']}: {row['Item_Colaborador_Equipamento']} (Prazo: {row['Data_Validade'].strftime('%d/%m/%Y')})%0A"
+btn_c1, btn_c2 = st.columns([1, 1])
 
-link_zap = f"https://api.whatsapp.com/send?text={texto_alerta_zap}"
+with btn_c1:
+    if st.button("📧 Disparar Alertas por E-mail", use_container_width=True):
+        # Utiliza credenciais fornecidas na barra lateral ou nos secrets do ambiente
+        remetente = user_email if user_email else st.secrets.get("EMAIL_SENDER")
+        senha = user_pass if user_pass else st.secrets.get("EMAIL_PASSWORD")
+        
+        if not remetente or not senha:
+            st.warning("Para disparar e-mails, preencha seu e-mail e senha de app no menu lateral esquerdo.")
+        else:
+            pendencias = df[df["Status"].isin(["🔴 Vencido", "🟡 A Vencer"])]
+            if pendencias.empty:
+                st.success("Não há pendências a serem notificadas!")
+            else:
+                try:
+                    total_env = disparar_emails_pendencias(pendencias, remetente, senha)
+                    if total_env > 0:
+                        st.success(f"Sucesso: {total_env} e-mail(s) enviado(s)!")
+                except Exception as e:
+                    st.error(f"Erro na autenticação SMTP: {e}")
 
-col_tab1, col_tab2 = st.columns([3, 1])
-with col_tab2:
+with btn_c2:
+    itens_alerta = df[df["Status"].isin(["🔴 Vencido", "🟡 A Vencer"])]
+    texto_alerta_zap = f"🚨 *ALERTA SST - CONTROLE DE VENCIMENTOS* 🚨%0A%0A"
+    texto_alerta_zap += f"Data: {date.today().strftime('%d/%m/%Y')}%0A"
+    texto_alerta_zap += f"Total Vencidos: {total_vencidos} | A Vencer: {total_a_vencer}%0A%0A"
+    for _, row in itens_alerta.head(8).iterrows():
+        data_formatada = row['Data_Validade'].strftime('%d/%m/%Y') if pd.notna(row['Data_Validade']) else "Sem data"
+        texto_alerta_zap += f"- [{row['Status']}] {row['Categoria']}: {row['Item_Colaborador_Equipamento']} (Prazo: {data_formatada})%0A"
+    link_zap_geral = f"https://api.whatsapp.com/send?text={texto_alerta_zap}"
+    
     st.markdown(f"""
-        <a href="{link_zap}" target="_blank" style="text-decoration: none;">
-            <div style="background-color: #25D366; color: white; padding: 10px 14px; border-radius: 6px; text-align: center; font-weight: 700; font-size: 13px; margin-bottom: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                📲 Enviar Alerta via WhatsApp
+        <a href="{link_zap_geral}" target="_blank" style="text-decoration: none;">
+            <div style="background-color: #25D366; color: white; padding: 10px; border-radius: 6px; text-align: center; font-weight: 700; font-size: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                📲 Compartilhar Resumo no WhatsApp
             </div>
         </a>
     """, unsafe_allow_html=True)
 
+st.write("")
+
+# 8. Tabela de Gestão com Notificação Individual via WhatsApp
+st.markdown("### 📋 Itens em Monitoramento")
+
+def gerar_link_zap_individual(row):
+    tel = str(row["Telefone_Responsavel"]).replace(".0", "").strip()
+    if not tel or tel.lower() in ["nan", "none", ""]:
+        return '<span style="color: #94A3B8;">Sem telefone</span>'
+    
+    data_formatada = row['Data_Validade'].strftime('%d/%m/%Y') if pd.notna(row['Data_Validade']) else "Sem data"
+    msg = f"Olá {row['Responsavel']}, atenção para a seguinte pendência de SST: {row['Item_Colaborador_Equipamento']} está com status {row['Status']} (Validade: {data_formatada})."
+    msg_cod = urllib.parse.quote(msg)
+    url = f"https://api.whatsapp.com/send?phone={tel}&text={msg_cod}"
+    primeiro_nome = str(row["Responsavel"]).split()[0] if pd.notna(row["Responsavel"]) else "Responsável"
+    return f'<a href="{url}" target="_blank" style="text-decoration: none; font-weight: bold; color: #0F766E;">📲 Notificar {primeiro_nome}</a>'
+
 df_exibir = df_filtrado.copy()
+df_exibir["Aviso WhatsApp"] = df_exibir.apply(gerar_link_zap_individual, axis=1)
 df_exibir["Data_Validade"] = df_exibir["Data_Validade"].dt.strftime("%d/%m/%Y")
-st.dataframe(
-    df_exibir[["Status", "Categoria", "Item_Colaborador_Equipamento", "Setor", "Data_Validade", "Dias_Restantes", "Responsavel"]],
-    hide_index=True,
-    use_container_width=True
+
+st.write(
+    df_exibir[["Status", "Categoria", "Item_Colaborador_Equipamento", "Setor", "Data_Validade", "Dias_Restantes", "Responsavel", "Email_Responsavel", "Aviso WhatsApp"]].to_html(escape=False, index=False),
+    unsafe_allow_html=True
 )
-  
-       
