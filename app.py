@@ -79,7 +79,6 @@ st.markdown("""
 @st.cache_data
 def gerar_planilha_modelo_vencimentos():
     hoje = datetime.now()
-    
     df_base = pd.DataFrame({
         "Categoria": [
             "ASO (NR-07)", "ASO (NR-07)",
@@ -129,7 +128,6 @@ def gerar_planilha_modelo_vencimentos():
             "5581999990006", "5581999990006"
         ]
     })
-
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         df_base.to_excel(writer, sheet_name="Vencimentos", index=False)
@@ -166,32 +164,39 @@ with st.sidebar:
         url_sheets = st.text_input(
             "Cole o link do Google Sheets:",
             placeholder="https://docs.google.com/spreadsheets/d/...",
-            help="Certifique-se de que o compartilhamento da planilha esteja como 'Qualquer pessoa com o link pode ler'."
+            help="Certifique-se de que a planilha esteja com acesso 'Qualquer pessoa com o link pode ler'."
         )
+        if st.button("🔄 Atualizar Dados Agora", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
     else:
         upload_arquivo = st.file_uploader("Suba sua planilha (.xlsx)", type=["xlsx"])
 
 # 3. Leitura e Processamento dos Dados
 df = None
 
-# Função com parâmetro anti-cache do Google Sheets
 def carregar_google_sheets(url):
-    padrao = r"/d/([a-zA-Z0-9-_]+)"
-    match = re.search(padrao, url)
-    if match:
-        sheet_id = match.group(1)
-        # O parâmetro t={int(time.time())} força o Google a entregar a versão mais recente em tempo real
-        csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&t={int(time.time())}"
-        return pd.read_csv(csv_url)
-    return None
+    id_match = re.search(r"/d/([a-zA-Z0-9-_]+)", url)
+    if not id_match:
+        return None
+    sheet_id = id_match.group(1)
+    
+    # Captura a aba específica (gid) para evitar ler a aba errada ou desatualizada
+    gid_match = re.search(r"[#&?]gid=([0-9]+)", url)
+    gid_str = f"&gid={gid_match.group(1)}" if gid_match else ""
+    
+    # Header anti-cache com timestamp
+    timestamp = int(time.time())
+    csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv{gid_str}&nocache={timestamp}"
+    return pd.read_csv(csv_url)
 
 if tipo_fonte == "Planilha Online (Google Sheets)" and url_sheets.strip() != "":
     try:
         df = carregar_google_sheets(url_sheets)
         if df is None or df.empty:
-            st.sidebar.error("Não foi possível ler o link. Verifique a permissão de compartilhamento.")
+            st.sidebar.error("Não foi possível ler o link. Verifique as permissões da planilha.")
     except Exception as e:
-        st.sidebar.error(f"Erro ao carregar Google Sheets: {e}")
+        st.sidebar.error(f"Erro ao ler Google Sheets: {e}")
 
 if df is None and upload_arquivo is not None:
     try:
@@ -199,7 +204,6 @@ if df is None and upload_arquivo is not None:
     except Exception:
         df = pd.read_excel(upload_arquivo)
 
-# Se não carregou nem Google Sheets nem arquivo, carrega o modelo demonstrativo
 if df is None:
     buffer = gerar_planilha_modelo_vencimentos()
     df = pd.read_excel(buffer, sheet_name="Vencimentos")
@@ -207,7 +211,7 @@ if df is None:
 if "Telefone_Responsavel" not in df.columns:
     df["Telefone_Responsavel"] = ""
 
-# Parser robusto para datas (trata serial numérico do Excel, formato BR e objetos nativos)
+# Parser robusto para datas
 def tratar_data_universal(valor):
     if pd.isna(valor) or str(valor).strip().lower() in ["nan", "nat", "", "none"]:
         return pd.NaT
