@@ -152,7 +152,7 @@ with st.sidebar:
     st.subheader("📁 Upload de Dados")
     upload_arquivo = st.file_uploader("Suba sua planilha (.xlsx)", type=["xlsx"])
 
-# 3. Processamento dos Dados
+# 3. Leitura e Processamento dos Dados
 if upload_arquivo:
     try:
         df = pd.read_excel(upload_arquivo, sheet_name="Vencimentos")
@@ -165,7 +165,14 @@ else:
 if "Telefone_Responsavel" not in df.columns:
     df["Telefone_Responsavel"] = ""
 
-df["Data_Validade"] = pd.to_datetime(df["Data_Validade"], errors="coerce")
+# Leitura inteligente de datas: suporta DD/MM/AAAA, AAAA-MM-DD e mistos
+df["Data_Validade"] = pd.to_datetime(
+    df["Data_Validade"],
+    dayfirst=True,
+    format='mixed',
+    errors="coerce"
+)
+
 hoje_ts = pd.to_datetime(date.today())
 df["Dias_Restantes"] = (df["Data_Validade"] - hoje_ts).dt.days
 
@@ -304,9 +311,12 @@ def gerar_link_zap_individual(row):
 
 df_exibir = df_filtrado.copy()
 df_exibir["Aviso WhatsApp"] = df_exibir.apply(gerar_link_zap_individual, axis=1)
-df_exibir["Data_Validade"] = df_exibir["Data_Validade"].dt.strftime("%d/%m/%Y")
+df_exibir["Data_Validade"] = df_exibir["Data_Validade"].apply(lambda d: d.strftime("%d/%m/%Y") if pd.notna(d) else "Sem Data")
 
 st.write(
     df_exibir[["Status", "Categoria", "Item_Colaborador_Equipamento", "Setor", "Data_Validade", "Dias_Restantes", "Responsavel", "Aviso WhatsApp"]].to_html(escape=False, index=False),
     unsafe_allow_html=True
 )
+           
+
+       
