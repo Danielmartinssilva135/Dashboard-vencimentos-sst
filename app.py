@@ -1,5 +1,6 @@
 import io
 import re
+import time
 import urllib.parse
 from datetime import date, datetime
 import streamlit as st
@@ -173,13 +174,14 @@ with st.sidebar:
 # 3. Leitura e Processamento dos Dados
 df = None
 
-# Função para converter link público do Google Sheets em CSV direto
+# Função com parâmetro anti-cache do Google Sheets
 def carregar_google_sheets(url):
     padrao = r"/d/([a-zA-Z0-9-_]+)"
     match = re.search(padrao, url)
     if match:
         sheet_id = match.group(1)
-        csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
+        # O parâmetro t={int(time.time())} força o Google a entregar a versão mais recente em tempo real
+        csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&t={int(time.time())}"
         return pd.read_csv(csv_url)
     return None
 
@@ -187,7 +189,7 @@ if tipo_fonte == "Planilha Online (Google Sheets)" and url_sheets.strip() != "":
     try:
         df = carregar_google_sheets(url_sheets)
         if df is None or df.empty:
-            st.sidebar.error("Não foi possível ler o link. Verifique a permissão da planilha.")
+            st.sidebar.error("Não foi possível ler o link. Verifique a permissão de compartilhamento.")
     except Exception as e:
         st.sidebar.error(f"Erro ao carregar Google Sheets: {e}")
 
@@ -205,7 +207,7 @@ if df is None:
 if "Telefone_Responsavel" not in df.columns:
     df["Telefone_Responsavel"] = ""
 
-# Parser universal de datas
+# Parser robusto para datas (trata serial numérico do Excel, formato BR e objetos nativos)
 def tratar_data_universal(valor):
     if pd.isna(valor) or str(valor).strip().lower() in ["nan", "nat", "", "none"]:
         return pd.NaT
