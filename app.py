@@ -1,4 +1,5 @@
 import io
+import re
 import urllib.parse
 from datetime import date, datetime
 import streamlit as st
@@ -134,7 +135,7 @@ def gerar_planilha_modelo_vencimentos():
     buffer.seek(0)
     return buffer
 
-# 2. Barra Lateral
+# 2. Barra Lateral: Configurações e Fonte de Dados
 with st.sidebar:
     st.header("⚙️ Configurações")
     dias_aviso = st.slider("Avisar itens a vencer em até:", min_value=7, max_value=90, value=30, step=1)
@@ -149,23 +150,62 @@ with st.sidebar:
     )
     
     st.divider()
-    st.subheader("📁 Upload de Dados")
-    upload_arquivo = st.file_uploader("Suba sua planilha (.xlsx)", type=["xlsx"])
+    st.subheader("📊 Conectar seus Dados")
+    
+    tipo_fonte = st.radio(
+        "Como deseja carregar os dados?",
+        ["Planilha Online (Google Sheets)", "Subir Arquivo (.xlsx)"],
+        index=0
+    )
+    
+    url_sheets = ""
+    upload_arquivo = None
+    
+    if tipo_fonte == "Planilha Online (Google Sheets)":
+        url_sheets = st.text_input(
+            "Cole o link do Google Sheets:",
+            placeholder="https://docs.google.com/spreadsheets/d/...",
+            help="Certifique-se de que o compartilhamento da planilha esteja como 'Qualquer pessoa com o link pode ler'."
+        )
+    else:
+        upload_arquivo = st.file_uploader("Suba sua planilha (.xlsx)", type=["xlsx"])
 
 # 3. Leitura e Processamento dos Dados
-if upload_arquivo:
+df = None
+
+# Função para converter link público do Google Sheets em CSV direto
+def carregar_google_sheets(url):
+    padrao = r"/d/([a-zA-Z0-9-_]+)"
+    match = re.search(padrao, url)
+    if match:
+        sheet_id = match.group(1)
+        csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
+        return pd.read_csv(csv_url)
+    return None
+
+if tipo_fonte == "Planilha Online (Google Sheets)" and url_sheets.strip() != "":
+    try:
+        df = carregar_google_sheets(url_sheets)
+        if df is None or df.empty:
+            st.sidebar.error("Não foi possível ler o link. Verifique a permissão da planilha.")
+    except Exception as e:
+        st.sidebar.error(f"Erro ao carregar Google Sheets: {e}")
+
+if df is None and upload_arquivo is not None:
     try:
         df = pd.read_excel(upload_arquivo, sheet_name="Vencimentos")
     except Exception:
         df = pd.read_excel(upload_arquivo)
-else:
+
+# Se não carregou nem Google Sheets nem arquivo, carrega o modelo demonstrativo
+if df is None:
     buffer = gerar_planilha_modelo_vencimentos()
     df = pd.read_excel(buffer, sheet_name="Vencimentos")
 
 if "Telefone_Responsavel" not in df.columns:
     df["Telefone_Responsavel"] = ""
 
-# Parser robusto para datas (trata serial numérico do Excel, string BR e objetos datetime)
+# Parser universal de datas
 def tratar_data_universal(valor):
     if pd.isna(valor) or str(valor).strip().lower() in ["nan", "nat", "", "none"]:
         return pd.NaT
