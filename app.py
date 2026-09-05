@@ -95,16 +95,16 @@ def gerar_planilha_modelo_vencimentos():
             "SST / Higiene", "SST / Higiene"
         ],
         "Data_Validade": [
-            (hoje - pd.Timedelta(days=15)).strftime("%Y-%m-%d"),  # Vencido
-            (hoje + pd.Timedelta(days=18)).strftime("%Y-%m-%d"),  # Vencendo
-            (hoje - pd.Timedelta(days=5)).strftime("%Y-%m-%d"),   # Vencido
-            (hoje + pd.Timedelta(days=25)).strftime("%Y-%m-%d"),  # Vencendo
-            (hoje + pd.Timedelta(days=120)).strftime("%Y-%m-%d"), # Em dia
-            (hoje - pd.Timedelta(days=2)).strftime("%Y-%m-%d"),   # Vencido
-            (hoje + pd.Timedelta(days=10)).strftime("%Y-%m-%d"),  # Vencendo
-            (hoje + pd.Timedelta(days=240)).strftime("%Y-%m-%d"), # Em dia
-            (hoje - pd.Timedelta(days=30)).strftime("%Y-%m-%d"),  # Vencido
-            (hoje + pd.Timedelta(days=90)).strftime("%Y-%m-%d")   # Em dia
+            (hoje - pd.Timedelta(days=15)).strftime("%Y-%m-%d"),
+            (hoje + pd.Timedelta(days=18)).strftime("%Y-%m-%d"),
+            (hoje - pd.Timedelta(days=5)).strftime("%Y-%m-%d"),
+            (hoje + pd.Timedelta(days=25)).strftime("%Y-%m-%d"),
+            (hoje + pd.Timedelta(days=120)).strftime("%Y-%m-%d"),
+            (hoje - pd.Timedelta(days=2)).strftime("%Y-%m-%d"),
+            (hoje + pd.Timedelta(days=10)).strftime("%Y-%m-%d"),
+            (hoje + pd.Timedelta(days=240)).strftime("%Y-%m-%d"),
+            (hoje - pd.Timedelta(days=30)).strftime("%Y-%m-%d"),
+            (hoje + pd.Timedelta(days=90)).strftime("%Y-%m-%d")
         ],
         "Responsavel": [
             "Dr. Médico do Trabalho", "Dr. Médico do Trabalho",
@@ -149,7 +149,6 @@ else:
     buffer = gerar_planilha_modelo_vencimentos()
     df = pd.read_excel(buffer, sheet_name="Vencimentos")
 
-# Normalização e Cálculo de Prazos
 df["Data_Validade"] = pd.to_datetime(df["Data_Validade"], errors="coerce")
 hoje_ts = pd.to_datetime(date.today())
 
@@ -177,7 +176,6 @@ with st.sidebar:
     status_lista = ["Todos", "🔴 Vencido", "🟡 A Vencer", "🟢 Em Dia"]
     status_sel = st.selectbox("Status:", status_lista)
 
-# Aplicar filtros
 df_filtrado = df.copy()
 if categoria_sel != "Todas":
     df_filtrado = df_filtrado[df_filtrado["Categoria"] == categoria_sel]
@@ -192,7 +190,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# 5. Métricas de Topo (Cards Resumo)
+# 5. Métricas de Topo
 total_itens = len(df)
 total_vencidos = len(df[df["Status"] == "🔴 Vencido"])
 total_a_vencer = len(df[df["Status"] == "🟡 A Vencer"])
@@ -213,7 +211,7 @@ with k5:
 
 st.write("")
 
-# 6. Gráficos Analíticos
+# 6. Gráficos Analíticos com Margens e Legendas Corrigidas
 c_graf1, c_graf2 = st.columns(2)
 config_limpo = {"displayModeBar": False}
 
@@ -227,10 +225,10 @@ with c_graf1:
     )
     fig_cat.update_layout(
         plot_bgcolor="#FFFFFF", paper_bgcolor="#FFFFFF",
-        margin=dict(l=15, r=15, t=40, b=20),
-        xaxis=dict(tickfont=dict(color="#0F172A", size=10), showgrid=False),
-        yaxis=dict(tickfont=dict(color="#0F172A", size=10), gridcolor="#E2E8F0"),
-        legend=dict(orientation="h", yanchor="bottom", y=-0.35, xanchor="center", x=0.5)
+        margin=dict(l=15, r=15, t=40, b=70),
+        xaxis=dict(tickfont=dict(color="#0F172A", size=10), showgrid=False, title=None),
+        yaxis=dict(tickfont=dict(color="#0F172A", size=10), gridcolor="#E2E8F0", title="Quantidade"),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.50, xanchor="center", x=0.5, title=None)
     )
     st.plotly_chart(fig_cat, use_container_width=True, config=config_limpo)
 
@@ -256,7 +254,6 @@ st.write("")
 # 7. Tabela de Gestão e Ações de Alerta
 st.markdown("### 📋 Itens em Monitoramento")
 
-# Geração de Mensagem para WhatsApp API
 itens_alerta = df[df["Status"].isin(["🔴 Vencido", "🟡 A Vencer"])]
 texto_alerta_zap = f"🚨 *ALERTA SST - CONTROLE DE VENCIMENTOS* 🚨%0A%0A"
 texto_alerta_zap += f"Data do Relatório: {date.today().strftime('%d/%m/%Y')}%0A"
@@ -286,3 +283,5 @@ st.dataframe(
     hide_index=True,
     use_container_width=True
 )
+  
+       
