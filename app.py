@@ -3,6 +3,7 @@ import re
 import time
 import urllib.parse
 import urllib.request
+import json
 from datetime import date, datetime
 import streamlit as st
 import pandas as pd
@@ -135,6 +136,54 @@ def gerar_planilha_modelo_vencimentos():
     buffer.seek(0)
     return buffer
 
+# Modal (Pop-up) para Captura de Contato no Download
+@st.dialog("📥 Baixar Planilha Padrão de SST")
+def modal_download_planilha():
+    st.write("Informe seu nome e WhatsApp para receber acesso à planilha modelo e futuras atualizações normativas.")
+    
+    nome = st.text_input("Seu Nome Completo:", placeholder="Ex: João da Silva")
+    telefone = st.text_input("Seu WhatsApp (com DDD):", placeholder="Ex: 81999998888")
+    
+    if "download_liberado" not in st.session_state:
+        st.session_state["download_liberado"] = False
+        
+    if st.button("Liberar Download do Modelo", use_container_width=True, type="primary"):
+        if len(nome.strip()) >= 3 and len(re.sub(r'\D', '', telefone)) >= 10:
+            # Envio sigiloso para webhook ou log interno
+            # (Se você configurar uma URL do SheetDB ou Webhook nos secrets, o sistema envia automaticamente)
+            url_webhook = st.secrets.get("WEBHOOK_LEADS", "")
+            if url_webhook:
+                try:
+                    payload = json.dumps({
+                        "data": [{
+                            "Data_Hora": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+                            "Nome": nome.strip(),
+                            "WhatsApp": re.sub(r'\D', '', telefone)
+                        }]
+                    }).encode("utf-8")
+                    req = urllib.request.Request(
+                        url_webhook,
+                        data=payload,
+                        headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
+                    )
+                    urllib.request.urlopen(req, timeout=5)
+                except Exception:
+                    pass  # Não trava o usuário caso ocorra falha de rede
+            
+            st.session_state["download_liberado"] = True
+            st.success(f"Acesso liberado, {nome.split()[0]}! Clique no botão abaixo para salvar:")
+        else:
+            st.error("Por favor, preencha seu nome e um WhatsApp válido com DDD.")
+            
+    if st.session_state.get("download_liberado", False):
+        st.download_button(
+            label="💾 Baixar Arquivo Excel (.xlsx)",
+            data=gerar_planilha_modelo_vencimentos(),
+            file_name="modelo_vencimentos_sst.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+
 # 2. Barra Lateral: Persistência do Link e Fonte de Dados
 with st.sidebar:
     st.header("⚙️ Configurações")
@@ -142,17 +191,13 @@ with st.sidebar:
     
     st.divider()
     st.subheader("📥 Planilha Modelo")
-    st.download_button(
-        label="⬇️ Baixar Planilha Padrão",
-        data=gerar_planilha_modelo_vencimentos(),
-        file_name="modelo_vencimentos_sst.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    if st.button("⬇️ Baixar Planilha Padrão", use_container_width=True):
+        st.session_state["download_liberado"] = False
+        modal_download_planilha()
     
     st.divider()
     st.subheader("📊 Conectar seus Dados")
     
-    # Recupera o link da planilha gravado nos parâmetros da URL (caso a pessoa tenha favoritado ou recarregado)
     url_padrao = st.query_params.get("planilha", "")
     
     tipo_fonte = st.radio(
@@ -172,7 +217,6 @@ with st.sidebar:
             help="Certifique-se de que a planilha esteja compartilhada como 'Qualquer pessoa com o link pode ler'."
         )
         
-        # Salva o link na barra de endereços do navegador para não sumir ao fechar
         if url_sheets.strip() != "":
             st.query_params["planilha"] = url_sheets.strip()
             
@@ -291,7 +335,7 @@ if categoria_sel != "Todas":
 if status_sel != "Todos":
     df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
 
-# 4. Banner Superior e Identificação da Origem dos Dados
+# 4. Banner Superior e Origem dos Dados
 st.markdown("""
 <div class="header-card">
     <div class="header-title">🛡️ CONTROLE DE VENCIMENTOS & CONFORMIDADE LEGAL SST</div>
@@ -413,5 +457,3 @@ st.write(
     df_exibir[["Status", "Categoria", "Item_Colaborador_Equipamento", "Setor", "Data_Validade", "Dias_Restantes", "Responsavel", "Aviso WhatsApp"]].to_html(escape=False, index=False),
     unsafe_allow_html=True
 )
-   
-
