@@ -135,7 +135,7 @@ def gerar_planilha_modelo_vencimentos():
     buffer.seek(0)
     return buffer
 
-# 2. Barra Lateral: Configurações e Fonte de Dados
+# 2. Barra Lateral: Persistência do Link e Fonte de Dados
 with st.sidebar:
     st.header("⚙️ Configurações")
     dias_aviso = st.slider("Avisar itens a vencer em até:", min_value=7, max_value=90, value=30, step=1)
@@ -152,6 +152,9 @@ with st.sidebar:
     st.divider()
     st.subheader("📊 Conectar seus Dados")
     
+    # Recupera o link da planilha gravado nos parâmetros da URL (caso a pessoa tenha favoritado ou recarregado)
+    url_padrao = st.query_params.get("planilha", "")
+    
     tipo_fonte = st.radio(
         "Como deseja carregar os dados?",
         ["Planilha Online (Google Sheets)", "Subir Arquivo (.xlsx)"],
@@ -164,10 +167,16 @@ with st.sidebar:
     if tipo_fonte == "Planilha Online (Google Sheets)":
         url_sheets = st.text_input(
             "Cole o link do Google Sheets:",
+            value=url_padrao,
             placeholder="https://docs.google.com/spreadsheets/d/...",
             help="Certifique-se de que a planilha esteja compartilhada como 'Qualquer pessoa com o link pode ler'."
         )
-        if st.button("🔄 Recarregar Dados da Planilha", use_container_width=True):
+        
+        # Salva o link na barra de endereços do navegador para não sumir ao fechar
+        if url_sheets.strip() != "":
+            st.query_params["planilha"] = url_sheets.strip()
+            
+        if st.button("🔄 Recarregar Dados Agora", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
     else:
@@ -175,6 +184,7 @@ with st.sidebar:
 
 # 3. Leitura e Processamento dos Dados
 df = None
+origem_dados = "modelo"
 
 def carregar_google_sheets(url):
     id_match = re.search(r"/d/([a-zA-Z0-9-_]+)", url)
@@ -212,20 +222,25 @@ def carregar_google_sheets(url):
 if tipo_fonte == "Planilha Online (Google Sheets)" and url_sheets.strip() != "":
     try:
         df = carregar_google_sheets(url_sheets)
-        if df is None or df.empty:
-            st.sidebar.error("Não foi possível ler o link. Verifique as permissões da planilha.")
+        if df is not None and not df.empty:
+            origem_dados = "google_sheets"
+        else:
+            st.sidebar.error("Não foi possível ler o link. Verifique as permissões de compartilhamento.")
     except Exception as e:
         st.sidebar.error(f"Erro ao ler Google Sheets: {e}")
 
 if df is None and upload_arquivo is not None:
     try:
         df = pd.read_excel(upload_arquivo, sheet_name="Vencimentos")
+        origem_dados = "arquivo_local"
     except Exception:
         df = pd.read_excel(upload_arquivo)
+        origem_dados = "arquivo_local"
 
 if df is None:
     buffer = gerar_planilha_modelo_vencimentos()
     df = pd.read_excel(buffer, sheet_name="Vencimentos")
+    origem_dados = "modelo"
 
 if "Telefone_Responsavel" not in df.columns:
     df["Telefone_Responsavel"] = ""
@@ -276,13 +291,20 @@ if categoria_sel != "Todas":
 if status_sel != "Todos":
     df_filtrado = df_filtrado[df_filtrado["Status"] == status_sel]
 
-# 4. Banner Superior
+# 4. Banner Superior e Identificação da Origem dos Dados
 st.markdown("""
 <div class="header-card">
     <div class="header-title">🛡️ CONTROLE DE VENCIMENTOS & CONFORMIDADE LEGAL SST</div>
     <div class="header-subtitle">Gestão Preventiva de ASOs • CAs de EPIs • Treinamentos • Inspeções NR-13 • Calibração de Equipamentos</div>
 </div>
 """, unsafe_allow_html=True)
+
+if origem_dados == "google_sheets":
+    st.success("🟢 **Conectado ao Google Sheets em tempo real.** Suas alterações estão sincronizadas!")
+elif origem_dados == "arquivo_local":
+    st.info("📁 **Exibindo dados do arquivo Excel enviado.**")
+else:
+    st.warning("⚠️ **Exibindo dados de demonstração.** Para ver os dados da sua empresa, cole o link da sua planilha no menu à esquerda.")
 
 # 5. Métricas de Topo
 total_itens = len(df)
@@ -391,3 +413,5 @@ st.write(
     df_exibir[["Status", "Categoria", "Item_Colaborador_Equipamento", "Setor", "Data_Validade", "Dias_Restantes", "Responsavel", "Aviso WhatsApp"]].to_html(escape=False, index=False),
     unsafe_allow_html=True
 )
+   
+
