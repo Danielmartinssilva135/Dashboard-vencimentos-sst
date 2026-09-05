@@ -101,16 +101,16 @@ def gerar_planilha_modelo_vencimentos():
             "SST / Higiene", "SST / Higiene"
         ],
         "Data_Validade": [
-            (hoje - pd.Timedelta(days=15)).strftime("%Y-%m-%d"),
-            (hoje + pd.Timedelta(days=18)).strftime("%Y-%m-%d"),
-            (hoje - pd.Timedelta(days=5)).strftime("%Y-%m-%d"),
-            (hoje + pd.Timedelta(days=25)).strftime("%Y-%m-%d"),
-            (hoje + pd.Timedelta(days=120)).strftime("%Y-%m-%d"),
-            (hoje - pd.Timedelta(days=2)).strftime("%Y-%m-%d"),
-            (hoje + pd.Timedelta(days=10)).strftime("%Y-%m-%d"),
-            (hoje + pd.Timedelta(days=240)).strftime("%Y-%m-%d"),
-            (hoje - pd.Timedelta(days=30)).strftime("%Y-%m-%d"),
-            (hoje + pd.Timedelta(days=90)).strftime("%Y-%m-%d")
+            (hoje - pd.Timedelta(days=15)).strftime("%d/%m/%Y"),
+            (hoje + pd.Timedelta(days=18)).strftime("%d/%m/%Y"),
+            (hoje - pd.Timedelta(days=5)).strftime("%d/%m/%Y"),
+            (hoje + pd.Timedelta(days=25)).strftime("%d/%m/%Y"),
+            (hoje + pd.Timedelta(days=120)).strftime("%d/%m/%Y"),
+            (hoje - pd.Timedelta(days=2)).strftime("%d/%m/%Y"),
+            (hoje + pd.Timedelta(days=10)).strftime("%d/%m/%Y"),
+            (hoje + pd.Timedelta(days=240)).strftime("%d/%m/%Y"),
+            (hoje - pd.Timedelta(days=30)).strftime("%d/%m/%Y"),
+            (hoje + pd.Timedelta(days=90)).strftime("%d/%m/%Y")
         ],
         "Responsavel": [
             "Dr. Médico do Trabalho", "Dr. Médico do Trabalho",
@@ -165,13 +165,20 @@ else:
 if "Telefone_Responsavel" not in df.columns:
     df["Telefone_Responsavel"] = ""
 
-# Leitura inteligente de datas: suporta DD/MM/AAAA, AAAA-MM-DD e mistos
-df["Data_Validade"] = pd.to_datetime(
-    df["Data_Validade"],
-    dayfirst=True,
-    format='mixed',
-    errors="coerce"
-)
+# Parser robusto para datas (trata serial numérico do Excel, string BR e objetos datetime)
+def tratar_data_universal(valor):
+    if pd.isna(valor) or str(valor).strip().lower() in ["nan", "nat", "", "none"]:
+        return pd.NaT
+    if isinstance(valor, (datetime, date)):
+        return pd.to_datetime(valor)
+    try:
+        val_float = float(valor)
+        return pd.to_datetime(val_float, unit='D', origin='1899-12-30')
+    except (ValueError, TypeError):
+        pass
+    return pd.to_datetime(str(valor).strip(), dayfirst=True, errors="coerce")
+
+df["Data_Validade"] = df["Data_Validade"].apply(tratar_data_universal)
 
 hoje_ts = pd.to_datetime(date.today())
 df["Dias_Restantes"] = (df["Data_Validade"] - hoje_ts).dt.days
@@ -311,12 +318,11 @@ def gerar_link_zap_individual(row):
 
 df_exibir = df_filtrado.copy()
 df_exibir["Aviso WhatsApp"] = df_exibir.apply(gerar_link_zap_individual, axis=1)
-df_exibir["Data_Validade"] = df_exibir["Data_Validade"].apply(lambda d: d.strftime("%d/%m/%Y") if pd.notna(d) else "Sem Data")
+df_exibir["Data_Validade"] = df_exibir["Data_Validade"].apply(
+    lambda d: d.strftime("%d/%m/%Y") if pd.notna(d) else "Sem Data"
+)
 
 st.write(
     df_exibir[["Status", "Categoria", "Item_Colaborador_Equipamento", "Setor", "Data_Validade", "Dias_Restantes", "Responsavel", "Aviso WhatsApp"]].to_html(escape=False, index=False),
     unsafe_allow_html=True
 )
-           
-
-       
